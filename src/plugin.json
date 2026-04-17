@@ -1,0 +1,45 @@
+{
+  "type": "app",
+  "name": "Private Dashboard Marketplace",
+  "id": "gregoor-private-marketplace-app",
+  "info": {
+    "description": "A private Grafana dashboard marketplace for publishing, discovering, and installing reusable dashboards within your organization.",
+    "author": {
+      "name": "Greg00r",
+      "url": ""
+    },
+    "keywords": ["marketplace", "dashboard", "templates", "gallery"],
+    "logos": {
+      "small": "img/logo.svg",
+      "large": "img/logo.svg"
+    },
+    "links": [],
+    "screenshots": [],
+    "version": "%VERSION%",
+    "updated": "%TODAY%"
+  },
+  "includes": [
+    {
+      "type": "page",
+      "name": "Dashboard Marketplace",
+      "path": "/a/gregoor-private-marketplace-app",
+      "role": "Viewer",
+      "addToNav": true,
+      "defaultNav": true
+    },
+    {
+      "type": "page",
+      "name": "Upload Template",
+      "path": "/a/gregoor-private-marketplace-app/upload",
+      "role": "Editor",
+      "addToNav": false
+    }
+  ],
+  "backend": true,
+  "executable": "gpx_private_marketplace",
+  "dependencies": {
+    "grafanaDependency": ">=10.4.0",
+    "grafanaVersion": "10.4.x",
+    "plugins": []
+  }
+}

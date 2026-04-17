@@ -1,0 +1,32 @@
+{
+  "variables": [
+    {
+      "name": "cluster",
+      "label": "Cluster name",
+      "type": "textbox",
+      "description": "Name of the Kubernetes cluster to monitor",
+      "default": "production",
+      "required": true
+    },
+    {
+      "name": "namespace",
+      "label": "Namespace",
+      "type": "query",
+      "description": "Kubernetes namespaces to filter by",
+      "datasource": "Prometheus",
+      "query": "label_values(kube_namespace_labels, namespace)",
+      "multi": true,
+      "includeAll": true,
+      "default": "$__all"
+    },
+    {
+      "name": "environment",
+      "label": "Environment",
+      "type": "custom",
+      "description": "Deployment environment",
+      "options": ["dev", "staging", "prod"],
+      "default": "prod",
+      "required": false
+    }
+  ]
+}

@@ -1,0 +1,15 @@
+{
+  "id": "k8s-cluster-overview",
+  "title": "Kubernetes Cluster Overview",
+  "shortDescription": "Monitor K8s cluster health – nodes, pods, CPU/memory resources.",
+  "longDescription": "# Kubernetes Cluster Overview\n\nComprehensive monitoring dashboard for a Kubernetes cluster.\n\n## What it shows\n\n- **Node health** – CPU, memory, and disk usage per node\n- **Pod status** – running, pending, failed, and succeeded counts\n- **Namespace resource consumption** – top namespaces by CPU and memory\n- **Workload overview** – deployments, daemonsets, statefulsets\n\n## Requirements\n\n- Prometheus with `kube-state-metrics` and `node-exporter` installed in the cluster\n- (Optional) Loki for pod log aggregation\n\n## Variables\n\n| Variable | Description |\n|---|---|\n| `cluster` | Cluster name used to filter metrics |\n| `namespace` | One or more Kubernetes namespaces |\n| `environment` | Deployment environment (dev / staging / prod) |\n",
+  "tags": ["kubernetes", "infrastructure", "prometheus", "devops"],
+  "requiredDatasources": [
+    { "type": "prometheus", "name": "Prometheus" },
+    { "type": "loki", "name": "Loki" }
+  ],
+  "author": "DevOps Team",
+  "version": "1.2.0",
+  "createdAt": "2025-10-01",
+  "updatedAt": "2026-04-17"
+}
