@@ -1,6 +1,6 @@
 {
   "name": "greg00r-templatehub-app",
-  "version": "1.0.4",
+  "version": "1.0.5",
   "description": "Template Hub for publishing and importing reusable Grafana dashboards",
   "scripts": {
     "build": "webpack -c ./.config/webpack.config.ts --env production",

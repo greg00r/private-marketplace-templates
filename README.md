@@ -225,7 +225,7 @@ The archive contains:
 The repository also includes a GitHub Actions workflow:
 
 - file: `.github/workflows/release-package.yml`
-- release trigger: push a tag matching `v*`, for example `v1.0.4`
+- release trigger: push a tag matching `v*`, for example `v1.0.5`
 
 When a tag is pushed, the workflow:
 
@@ -239,7 +239,7 @@ If the release asset already exists on GitHub, deployment to another Grafana ins
 
 ```bash
 curl -L -o template-hub.zip \
-  https://github.com/greg00r/greg00r-templatehub-app/releases/download/v1.0.4/greg00r-templatehub-app-1.0.4.zip
+  https://github.com/greg00r/greg00r-templatehub-app/releases/download/v1.0.5/greg00r-templatehub-app-1.0.5.zip
 
 unzip template-hub.zip -d /var/lib/grafana/plugins
 ```

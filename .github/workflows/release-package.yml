@@ -56,6 +56,23 @@ jobs:
       - name: Build release package
         run: bash scripts/package-plugin.sh "$PACKAGE_VERSION"
 
+      - name: Prepare release notes
+        shell: bash
+        run: |
+          mkdir -p .artifacts/releases
+
+          NOTES_SOURCE=".github/release-notes/${GITHUB_REF_NAME}.md"
+          NOTES_TARGET=".artifacts/releases/release-notes.md"
+
+          if [[ -f "$NOTES_SOURCE" ]]; then
+            cp "$NOTES_SOURCE" "$NOTES_TARGET"
+          else
+            printf 'Template Hub %s\n\nRelease assets for this version were built automatically from the tagged commit.\n' \
+              "$PACKAGE_VERSION" > "$NOTES_TARGET"
+          fi
+
+          echo "RELEASE_NOTES_FILE=$NOTES_TARGET" >> "$GITHUB_ENV"
+
       - name: Upload workflow artifact
         uses: actions/upload-artifact@v4
         with:
@@ -66,6 +83,7 @@ jobs:
         if: startsWith(github.ref, 'refs/tags/')
         uses: softprops/action-gh-release@v2
         with:
+          body_path: ${{ env.RELEASE_NOTES_FILE }}
           files: |
             .artifacts/releases/*.zip
             .artifacts/releases/*.sha256
