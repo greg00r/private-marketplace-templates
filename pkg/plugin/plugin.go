@@ -7,11 +7,14 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"sync"
+	"time"
 
 	"github.com/grafana/grafana-plugin-sdk-go/backend"
 	"github.com/grafana/grafana-plugin-sdk-go/backend/instancemgmt"
 	"github.com/grafana/grafana-plugin-sdk-go/backend/log"
 
+	"github.com/grafana/authlib/authz"
 	"github.com/greg00r/grafana-private-marketplace/pkg/plugin/storage"
 )
 
@@ -24,8 +27,13 @@ var (
 // Plugin is the App Plugin instance. One instance is created per Grafana org
 // (or per plugin configuration, depending on Grafana version).
 type Plugin struct {
-	storage storage.Storage
-	logger  log.Logger
+	storage          storage.Storage
+	logger           log.Logger
+	httpClient       *http.Client
+	permissionLookup userPermissionLookup
+	authzMu          sync.Mutex
+	authzClient      authz.EnforcementClient
+	saToken          string
 }
 
 // NewPlugin is the factory function called by app.Manage on startup.
@@ -69,8 +77,9 @@ func NewPlugin(_ context.Context, settings backend.AppInstanceSettings) (instanc
 	}
 
 	return &Plugin{
-		storage: store,
-		logger:  logger,
+		storage:    store,
+		logger:     logger,
+		httpClient: &http.Client{Timeout: 5 * time.Second},
 	}, nil
 }
 

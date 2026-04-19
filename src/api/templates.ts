@@ -1,5 +1,5 @@
 import { getBackendSrv } from '@grafana/runtime';
-import type { GrafanaDashboard, Template, TemplateMetadata, TemplateStatus, TemplateVariables } from '../types';
+import type { GrafanaDashboard, MarketplaceAccess, Template, TemplateMetadata, TemplateStatus, TemplateVariables } from '../types';
 
 const PLUGIN_ID = 'gregoor-private-marketplace-app';
 const BASE_URL = `/api/plugins/${PLUGIN_ID}/resources`;
@@ -10,6 +10,10 @@ function withStatus(status: TemplateStatus = 'approved'): string {
 
 export async function listTemplates(status: TemplateStatus = 'approved'): Promise<Template[]> {
   return getBackendSrv().get<Template[]>(`${BASE_URL}/templates${withStatus(status)}`);
+}
+
+export async function getMarketplaceAccess(): Promise<MarketplaceAccess> {
+  return getBackendSrv().get<MarketplaceAccess>(`${BASE_URL}/access`);
 }
 
 export async function getTemplateMetadata(id: string, status: TemplateStatus = 'approved'): Promise<TemplateMetadata> {

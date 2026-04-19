@@ -4,15 +4,18 @@ import { AppEvents, GrafanaTheme2 } from '@grafana/data';
 import { getAppEvents } from '@grafana/runtime';
 import { Alert, Button, LoadingBar, Stack, Tag, Text, useStyles2 } from '@grafana/ui';
 import { approveTemplate, deleteTemplate, listTemplates } from '../api/templates';
+import { useMarketplaceAccess } from '../hooks/useMarketplaceAccess';
 import type { Template } from '../types';
-import { canCurrentUserApproveTemplates } from '../utils/access';
 import { buildPluginPath, navigateToPath } from '../utils/navigation';
 import { getTemplateFolderLabel, getTemplateLastPublisherLabel } from '../utils/templateMetadata';
 
 export function Review() {
   const styles = useStyles2(getStyles);
   const appEvents = getAppEvents();
-  const canApproveTemplates = canCurrentUserApproveTemplates();
+  const { access, loading: accessLoading } = useMarketplaceAccess();
+  const canReviewTemplates = access.review;
+  const canApproveTemplates = access.approve;
+  const canDeleteTemplates = access.delete;
 
   const [templates, setTemplates] = useState<Template[]>([]);
   const [loading, setLoading] = useState(true);
@@ -34,14 +37,18 @@ export function Review() {
   }, []);
 
   useEffect(() => {
-    if (canApproveTemplates) {
+    if (canReviewTemplates) {
       loadPendingTemplates();
     } else {
       setLoading(false);
     }
-  }, [canApproveTemplates, loadPendingTemplates]);
+  }, [canReviewTemplates, loadPendingTemplates]);
 
   const handleApprove = async (template: Template) => {
+    if (!canApproveTemplates) {
+      return;
+    }
+
     setBusyTemplateId(template.metadata.id);
 
     try {
@@ -63,6 +70,10 @@ export function Review() {
   };
 
   const handleReject = async (template: Template) => {
+    if (!canDeleteTemplates) {
+      return;
+    }
+
     setBusyTemplateId(template.metadata.id);
 
     try {
@@ -83,14 +94,25 @@ export function Review() {
     }
   };
 
-  if (!canApproveTemplates) {
+  if (accessLoading) {
     return (
       <div className={styles.page}>
         <Button variant="secondary" size="sm" fill="text" onClick={() => navigateToPath(buildPluginPath({ type: 'gallery' }))}>
           Back to gallery
         </Button>
-        <Alert title="Admin access required" severity="warning">
-          Only Admins can review and approve pending dashboard templates.
+        <LoadingBar width={320} />
+      </div>
+    );
+  }
+
+  if (!canReviewTemplates) {
+    return (
+      <div className={styles.page}>
+        <Button variant="secondary" size="sm" fill="text" onClick={() => navigateToPath(buildPluginPath({ type: 'gallery' }))}>
+          Back to gallery
+        </Button>
+        <Alert title="Review access required" severity="warning">
+          You need the marketplace review permission or the Admin basic role to moderate pending dashboard templates.
         </Alert>
       </div>
     );
@@ -200,20 +222,24 @@ export function Review() {
                 )}
 
                 <div className={styles.actions}>
-                  <Button
-                    variant="destructive"
-                    onClick={() => handleReject(template)}
-                    disabled={isBusy}
-                  >
-                    {isBusy ? 'Working...' : 'Reject'}
-                  </Button>
-                  <Button
-                    variant="primary"
-                    onClick={() => handleApprove(template)}
-                    disabled={isBusy}
-                  >
-                    {isBusy ? 'Working...' : 'Approve'}
-                  </Button>
+                  {canDeleteTemplates && (
+                    <Button
+                      variant="destructive"
+                      onClick={() => handleReject(template)}
+                      disabled={isBusy}
+                    >
+                      {isBusy ? 'Working...' : 'Reject'}
+                    </Button>
+                  )}
+                  {canApproveTemplates && (
+                    <Button
+                      variant="primary"
+                      onClick={() => handleApprove(template)}
+                      disabled={isBusy}
+                    >
+                      {isBusy ? 'Working...' : 'Approve'}
+                    </Button>
+                  )}
                 </div>
               </div>
             );

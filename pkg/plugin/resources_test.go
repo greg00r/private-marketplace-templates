@@ -119,6 +119,29 @@ func TestHandleUploadTemplateCreatesTemplateAndAuditMetadata(t *testing.T) {
 	}
 }
 
+func TestHandleUploadTemplateAllowsViewerWithPublishPermission(t *testing.T) {
+	plugin := newTestPlugin(t)
+	plugin.permissionLookup = func(_ *http.Request) (grafanaPermissionMap, bool, error) {
+		return grafanaPermissionMap{
+			actionTemplatesPublish: {""},
+		}, true, nil
+	}
+
+	body := validUploadBody()
+	req := httptest.NewRequest(http.MethodPost, "/api/plugins/"+pluginID+"/resources/templates", strings.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	req.ContentLength = int64(len(body))
+
+	recorder := httptest.NewRecorder()
+	plugin.handleUploadTemplate(recorder, req, backend.PluginContext{
+		User: &backend.User{Login: "viewer", Role: "Viewer"},
+	})
+
+	if recorder.Code != http.StatusCreated {
+		t.Fatalf("status = %d, want %d; body=%s", recorder.Code, http.StatusCreated, recorder.Body.String())
+	}
+}
+
 func TestHandleUploadTemplateOverridesSpoofedAuthorWithLoggedInUser(t *testing.T) {
 	plugin := newTestPlugin(t)
 	body := `{
@@ -287,6 +310,106 @@ func TestHandleListTemplatesHidesPendingTemplatesFromViewer(t *testing.T) {
 	}
 }
 
+func TestHandleListTemplatesAllowsPendingTemplatesWithReviewPermission(t *testing.T) {
+	plugin := newTestPlugin(t)
+	uploadBody := validUploadBody()
+	uploadReq := httptest.NewRequest(http.MethodPost, "/api/plugins/"+pluginID+"/resources/templates", strings.NewReader(uploadBody))
+	uploadReq.Header.Set("Content-Type", "application/json")
+	uploadReq.ContentLength = int64(len(uploadBody))
+
+	uploadRecorder := httptest.NewRecorder()
+	plugin.handleUploadTemplate(uploadRecorder, uploadReq, backend.PluginContext{
+		User: &backend.User{Login: "editor", Role: "Editor"},
+	})
+	if uploadRecorder.Code != http.StatusCreated {
+		t.Fatalf("upload status = %d, want %d; body=%s", uploadRecorder.Code, http.StatusCreated, uploadRecorder.Body.String())
+	}
+
+	plugin.permissionLookup = func(_ *http.Request) (grafanaPermissionMap, bool, error) {
+		return grafanaPermissionMap{
+			actionTemplatesReview: {""},
+		}, true, nil
+	}
+
+	listReq := httptest.NewRequest(http.MethodGet, "/api/plugins/"+pluginID+"/resources/templates?status=pending", nil)
+	listRecorder := httptest.NewRecorder()
+	plugin.handleListTemplates(listRecorder, listReq, backend.PluginContext{
+		User: &backend.User{Login: "viewer", Role: "Viewer"},
+	})
+
+	if listRecorder.Code != http.StatusOK {
+		t.Fatalf("status = %d, want %d; body=%s", listRecorder.Code, http.StatusOK, listRecorder.Body.String())
+	}
+}
+
+func TestHandleGetAccessFallsBackToBasicRoleOnOSS(t *testing.T) {
+	plugin := newTestPlugin(t)
+	plugin.permissionLookup = func(_ *http.Request) (grafanaPermissionMap, bool, error) {
+		return nil, false, nil
+	}
+
+	req := httptest.NewRequest(http.MethodGet, "/api/plugins/"+pluginID+"/resources/access", nil)
+	recorder := httptest.NewRecorder()
+	plugin.handleGetAccess(recorder, req, backend.PluginContext{
+		User: &backend.User{Login: "editor", Role: "Editor"},
+	})
+
+	if recorder.Code != http.StatusOK {
+		t.Fatalf("status = %d, want %d; body=%s", recorder.Code, http.StatusOK, recorder.Body.String())
+	}
+
+	var access MarketplaceAccess
+	if err := json.Unmarshal(recorder.Body.Bytes(), &access); err != nil {
+		t.Fatalf("unmarshal access returned error: %v", err)
+	}
+
+	if !access.Publish {
+		t.Fatalf("expected publish access for editor fallback, got %#v", access)
+	}
+	if access.Review {
+		t.Fatalf("expected review access to be false for editor fallback, got %#v", access)
+	}
+	if access.Source != "basic-role-fallback" {
+		t.Fatalf("access.Source = %q, want %q", access.Source, "basic-role-fallback")
+	}
+}
+
+func TestHandleGetAccessHonorsPluginRBACActions(t *testing.T) {
+	plugin := newTestPlugin(t)
+	plugin.permissionLookup = func(_ *http.Request) (grafanaPermissionMap, bool, error) {
+		return grafanaPermissionMap{
+			actionTemplatesPublish: {""},
+			actionTemplatesReview:  {""},
+			actionTemplatesApprove: {""},
+		}, true, nil
+	}
+
+	req := httptest.NewRequest(http.MethodGet, "/api/plugins/"+pluginID+"/resources/access", nil)
+	recorder := httptest.NewRecorder()
+	plugin.handleGetAccess(recorder, req, backend.PluginContext{
+		User: &backend.User{Login: "viewer", Role: "Viewer"},
+	})
+
+	if recorder.Code != http.StatusOK {
+		t.Fatalf("status = %d, want %d; body=%s", recorder.Code, http.StatusOK, recorder.Body.String())
+	}
+
+	var access MarketplaceAccess
+	if err := json.Unmarshal(recorder.Body.Bytes(), &access); err != nil {
+		t.Fatalf("unmarshal access returned error: %v", err)
+	}
+
+	if !access.Publish || !access.Review || !access.Approve {
+		t.Fatalf("expected RBAC actions to elevate access, got %#v", access)
+	}
+	if access.Delete {
+		t.Fatalf("expected delete to remain false without matching action, got %#v", access)
+	}
+	if !access.RBACAvailable {
+		t.Fatalf("expected RBACAvailable to be true, got %#v", access)
+	}
+}
+
 func TestHandleApproveTemplateMovesTemplateToApprovedQueue(t *testing.T) {
 	plugin := newTestPlugin(t)
 	body := validUploadBody()
@@ -303,7 +426,7 @@ func TestHandleApproveTemplateMovesTemplateToApprovedQueue(t *testing.T) {
 	}
 
 	approveRecorder := httptest.NewRecorder()
-	plugin.handleApproveTemplate(approveRecorder, "demo-dashboard-1-0-0", backend.PluginContext{
+	plugin.handleApproveTemplate(approveRecorder, httptest.NewRequest(http.MethodPost, "/approve", nil), "demo-dashboard-1-0-0", backend.PluginContext{
 		User: &backend.User{Login: "admin", Name: "Admin User", Role: "Admin"},
 	})
 	if approveRecorder.Code != http.StatusOK {
@@ -341,8 +464,9 @@ func newTestPlugin(t *testing.T) *Plugin {
 	}
 
 	return &Plugin{
-		storage: store,
-		logger:  log.NewNullLogger(),
+		storage:    store,
+		logger:     log.NewNullLogger(),
+		httpClient: http.DefaultClient,
 	}
 }
 

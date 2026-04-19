@@ -5,15 +5,17 @@ import { getAppEvents } from '@grafana/runtime';
 import { useStyles2 } from '@grafana/ui';
 import { deleteTemplate, listTemplates } from '../api/templates';
 import { TemplateCard } from '../components/TemplateCard';
+import { useMarketplaceAccess } from '../hooks/useMarketplaceAccess';
 import type { Template } from '../types';
-import { canCurrentUserApproveTemplates, canCurrentUserPublishTemplates } from '../utils/access';
 import { buildPluginPath, navigateToPath } from '../utils/navigation';
 
 export function Gallery() {
   const appEvents = getAppEvents();
   const styles = useStyles2(getStyles);
-  const canPublishTemplates = canCurrentUserPublishTemplates();
-  const canApproveTemplates = canCurrentUserApproveTemplates();
+  const { access } = useMarketplaceAccess();
+  const canPublishTemplates = access.publish;
+  const canReviewTemplates = access.review;
+  const canDeleteTemplates = access.delete;
 
   const [templates, setTemplates] = useState<Template[]>([]);
   const [loading, setLoading] = useState(true);
@@ -92,7 +94,7 @@ export function Gallery() {
 
   const handleDeleteTemplate = useCallback(
     async (template: Template) => {
-      if (!canApproveTemplates) {
+      if (!canDeleteTemplates) {
         return;
       }
 
@@ -119,7 +121,7 @@ export function Gallery() {
         setBusyTemplateId(null);
       }
     },
-    [appEvents, canApproveTemplates]
+    [appEvents, canDeleteTemplates]
   );
 
   return (
@@ -131,7 +133,9 @@ export function Gallery() {
             Browse approved dashboard templates and import them into this Grafana instance.
           </p>
           {!canPublishTemplates && (
-            <p className={styles.subtitle}>Template publishing is available to Editors and Admins.</p>
+            <p className={styles.subtitle}>
+              Template publishing is available to users with the marketplace publish permission or the Editor/Admin basic role.
+            </p>
           )}
           {canPublishTemplates && (
             <p className={styles.subtitle}>New submissions go into an approval queue before they appear here.</p>
@@ -139,7 +143,7 @@ export function Gallery() {
         </div>
 
         <div className={styles.heroActions}>
-          {canApproveTemplates && (
+          {canReviewTemplates && (
             <button
               className={styles.secondaryButton}
               onClick={() => navigateToPath(buildPluginPath({ type: 'review' }))}
@@ -268,7 +272,7 @@ export function Gallery() {
               <TemplateCard
                 key={template.metadata.id}
                 template={template}
-                canDelete={canApproveTemplates}
+                canDelete={canDeleteTemplates}
                 deleting={busyTemplateId === template.metadata.id}
                 onDelete={() => void handleDeleteTemplate(template)}
                 onClick={() =>

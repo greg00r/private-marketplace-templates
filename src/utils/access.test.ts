@@ -4,9 +4,15 @@ jest.mock('@grafana/runtime', () => ({
       user: null,
     },
   },
+  hasPermission: jest.fn(() => false),
 }));
 
-import { canApproveTemplatesForRole, canPublishTemplatesForRole, normalizeOrgRole } from './access';
+import {
+  canApproveTemplatesForRole,
+  canPublishTemplatesForRole,
+  getFallbackMarketplaceAccess,
+  normalizeOrgRole,
+} from './access';
 
 describe('access', () => {
   it('normalizes Grafana roles to marketplace roles', () => {
@@ -29,5 +35,27 @@ describe('access', () => {
     expect(canApproveTemplatesForRole('Editor')).toBe(false);
     expect(canApproveTemplatesForRole('Viewer')).toBe(false);
     expect(canApproveTemplatesForRole(undefined)).toBe(false);
+  });
+
+  it('builds fallback marketplace access from org roles', () => {
+    expect(getFallbackMarketplaceAccess('Viewer')).toMatchObject({
+      read: true,
+      publish: false,
+      review: false,
+      approve: false,
+      delete: false,
+      initialize: false,
+      orgRole: 'Viewer',
+    });
+
+    expect(getFallbackMarketplaceAccess('Editor')).toMatchObject({
+      read: true,
+      publish: true,
+      review: false,
+      approve: false,
+      delete: false,
+      initialize: false,
+      orgRole: 'Editor',
+    });
   });
 });

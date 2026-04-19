@@ -1,12 +1,31 @@
 import React from 'react';
-import { Alert, Button, Icon, Stack, Text } from '@grafana/ui';
+import { Alert, Button, Icon, LoadingBar, Stack, Text } from '@grafana/ui';
 import { UploadWizard } from '../components/UploadWizard';
-import { canCurrentUserApproveTemplates, canCurrentUserPublishTemplates } from '../utils/access';
+import { useMarketplaceAccess } from '../hooks/useMarketplaceAccess';
 import { buildPluginPath, navigateToPath } from '../utils/navigation';
 
 export function Upload() {
-  const canPublishTemplates = canCurrentUserPublishTemplates();
-  const canApproveTemplates = canCurrentUserApproveTemplates();
+  const { access, loading } = useMarketplaceAccess();
+  const canPublishTemplates = access.publish;
+  const canApproveTemplates = access.review;
+
+  if (loading) {
+    return (
+      <div style={{ padding: '24px', maxWidth: '800px' }}>
+        <Button
+          variant="secondary"
+          size="sm"
+          fill="text"
+          onClick={() => navigateToPath(buildPluginPath({ type: 'gallery' }))}
+          style={{ marginBottom: '16px' }}
+        >
+          <Icon name="arrow-left" /> Back to gallery
+        </Button>
+
+        <LoadingBar width={280} />
+      </div>
+    );
+  }
 
   if (!canPublishTemplates) {
     return (
@@ -22,7 +41,7 @@ export function Upload() {
         </Button>
 
         <Alert title="Publishing is restricted" severity="warning">
-          Only users with the Editor or Admin role can publish dashboard templates.
+          You need the marketplace publish permission or the Editor/Admin basic role to publish dashboard templates.
         </Alert>
       </div>
     );

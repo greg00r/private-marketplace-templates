@@ -24,6 +24,7 @@
       "name": "Dashboard Marketplace",
       "path": "/a/gregoor-private-marketplace-app",
       "role": "Viewer",
+      "action": "gregoor-private-marketplace-app.templates:read",
       "addToNav": true,
       "defaultNav": true
     },
@@ -31,17 +32,74 @@
       "type": "page",
       "name": "Upload Template",
       "path": "/a/gregoor-private-marketplace-app/upload",
-      "role": "Editor",
+      "role": "Viewer",
+      "action": "gregoor-private-marketplace-app.templates:publish",
       "addToNav": false
     },
     {
       "type": "page",
       "name": "Review Templates",
       "path": "/a/gregoor-private-marketplace-app/review",
-      "role": "Admin",
-      "addToNav": true
+      "role": "Viewer",
+      "action": "gregoor-private-marketplace-app.templates:review",
+      "addToNav": false
     }
   ],
+  "roles": [
+    {
+      "role": {
+        "name": "Marketplace Viewer",
+        "description": "Browse approved dashboard templates in the marketplace.",
+        "permissions": [
+          {
+            "action": "gregoor-private-marketplace-app.templates:read"
+          }
+        ]
+      },
+      "grants": ["Viewer"]
+    },
+    {
+      "role": {
+        "name": "Marketplace Publisher",
+        "description": "Submit dashboard templates for admin review.",
+        "permissions": [
+          {
+            "action": "gregoor-private-marketplace-app.templates:publish"
+          }
+        ]
+      },
+      "grants": ["Editor"]
+    },
+    {
+      "role": {
+        "name": "Marketplace Reviewer",
+        "description": "Review, approve, delete, and initialize marketplace templates.",
+        "permissions": [
+          {
+            "action": "gregoor-private-marketplace-app.templates:review"
+          },
+          {
+            "action": "gregoor-private-marketplace-app.templates:approve"
+          },
+          {
+            "action": "gregoor-private-marketplace-app.templates:delete"
+          },
+          {
+            "action": "gregoor-private-marketplace-app.templates:initialize"
+          }
+        ]
+      },
+      "grants": ["Admin"]
+    }
+  ],
+  "iam": {
+    "permissions": [
+      {
+        "action": "users.permissions:read",
+        "scope": "users:*"
+      }
+    ]
+  },
   "backend": true,
   "autoEnabled": true,
   "executable": "gpx_private_marketplace",

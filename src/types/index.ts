@@ -77,6 +77,19 @@ export interface Template {
   imageUrl?: string;
 }
 
+export interface MarketplaceAccess {
+  read: boolean;
+  publish: boolean;
+  review: boolean;
+  approve: boolean;
+  delete: boolean;
+  initialize: boolean;
+  orgRole: 'Admin' | 'Editor' | 'Viewer';
+  source: string;
+  rbacAvailable: boolean;
+  rbacError?: string;
+}
+
 // ─── Grafana Dashboard Model ─────────────────────────────────────────────────
 
 export interface GrafanaDashboard {

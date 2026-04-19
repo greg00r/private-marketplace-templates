@@ -20,14 +20,15 @@ import (
 
 // Route patterns for resource dispatching.
 var (
-	reTemplatesList = regexp.MustCompile(`^templates/?$`)
-	reTemplateByID  = regexp.MustCompile(`^templates/([^/]+)/?$`)
+	reTemplatesList   = regexp.MustCompile(`^templates/?$`)
+	reTemplateByID    = regexp.MustCompile(`^templates/([^/]+)/?$`)
 	reTemplateApprove = regexp.MustCompile(`^templates/([^/]+)/approve/?$`)
-	reTemplateImage = regexp.MustCompile(`^templates/([^/]+)/image/?$`)
-	reTemplateJSON  = regexp.MustCompile(`^templates/([^/]+)/template/?$`)
-	reTemplateVars  = regexp.MustCompile(`^templates/([^/]+)/variables/?$`)
-	reHealth        = regexp.MustCompile(`^health/?$`)
-	reInitialize    = regexp.MustCompile(`^initialize/?$`)
+	reTemplateImage   = regexp.MustCompile(`^templates/([^/]+)/image/?$`)
+	reTemplateJSON    = regexp.MustCompile(`^templates/([^/]+)/template/?$`)
+	reTemplateVars    = regexp.MustCompile(`^templates/([^/]+)/variables/?$`)
+	reAccess          = regexp.MustCompile(`^access/?$`)
+	reHealth          = regexp.MustCompile(`^health/?$`)
+	reInitialize      = regexp.MustCompile(`^initialize/?$`)
 )
 
 var (
@@ -38,22 +39,22 @@ var (
 )
 
 const (
-	pluginID             = "gregoor-private-marketplace-app"
-	maxUploadBodyBytes   = 10 << 20
-	maxImageBytes        = 2 << 20
-	maxTitleLength       = 120
-	maxShortDescLength   = 200
-	maxLongDescLength    = 12000
-	maxFolderLength      = 120
-	maxAuthorLength      = 120
-	maxTagCount          = 20
-	maxTagLength         = 40
-	maxDatasourceCount   = 20
-	maxVariableCount     = 50
-	maxVariableLabelLen  = 120
-	maxVariableDescLen   = 300
-	maxVariableValueLen  = 500
-	defaultTemplateVer   = "1.0.0"
+	pluginID            = "gregoor-private-marketplace-app"
+	maxUploadBodyBytes  = 10 << 20
+	maxImageBytes       = 2 << 20
+	maxTitleLength      = 120
+	maxShortDescLength  = 200
+	maxLongDescLength   = 12000
+	maxFolderLength     = 120
+	maxAuthorLength     = 120
+	maxTagCount         = 20
+	maxTagLength        = 40
+	maxDatasourceCount  = 20
+	maxVariableCount    = 50
+	maxVariableLabelLen = 120
+	maxVariableDescLen  = 300
+	maxVariableValueLen = 500
+	defaultTemplateVer  = "1.0.0"
 )
 
 var allowedImageMIMEs = map[string]struct{}{
@@ -113,8 +114,11 @@ func (p *Plugin) handleResources(rw http.ResponseWriter, req *http.Request, plug
 	case reHealth.MatchString(path) && method == http.MethodGet:
 		p.handleHealth(rw)
 
+	case reAccess.MatchString(path) && method == http.MethodGet:
+		p.handleGetAccess(rw, req, pluginCtx)
+
 	case reInitialize.MatchString(path) && method == http.MethodPost:
-		p.handleInitialize(rw, pluginCtx)
+		p.handleInitialize(rw, req, pluginCtx)
 
 	case reTemplatesList.MatchString(path) && method == http.MethodGet:
 		p.handleListTemplates(rw, req, pluginCtx)
@@ -124,7 +128,7 @@ func (p *Plugin) handleResources(rw http.ResponseWriter, req *http.Request, plug
 
 	case reTemplateApprove.MatchString(path) && method == http.MethodPost:
 		m := reTemplateApprove.FindStringSubmatch(path)
-		p.handleApproveTemplate(rw, m[1], pluginCtx)
+		p.handleApproveTemplate(rw, req, m[1], pluginCtx)
 
 	case reTemplateImage.MatchString(path) && method == http.MethodGet:
 		m := reTemplateImage.FindStringSubmatch(path)
@@ -180,9 +184,9 @@ func requestedTemplateStatus(req *http.Request, defaultStatus TemplateStatus) (T
 	}
 }
 
-func requireTemplateStatusAccess(pluginCtx backend.PluginContext, status TemplateStatus) error {
+func (p *Plugin) requireTemplateStatusAccess(req *http.Request, pluginCtx backend.PluginContext, status TemplateStatus) error {
 	if status == TemplateStatusPending {
-		return requireMinimumRole(pluginCtx, accessAdmin, "view pending templates")
+		return p.requireMarketplaceAccess(req, pluginCtx, actionTemplatesReview, "view pending templates")
 	}
 
 	return nil
@@ -215,8 +219,8 @@ func (p *Plugin) handleHealth(rw http.ResponseWriter) {
 }
 
 // handleInitialize ensures the storage root exists (local only).
-func (p *Plugin) handleInitialize(rw http.ResponseWriter, pluginCtx backend.PluginContext) {
-	if err := requireMinimumRole(pluginCtx, accessAdmin, "initialize plugin storage"); err != nil {
+func (p *Plugin) handleInitialize(rw http.ResponseWriter, req *http.Request, pluginCtx backend.PluginContext) {
+	if err := p.requireMarketplaceAccess(req, pluginCtx, actionTemplatesInitialize, "initialize plugin storage"); err != nil {
 		writeAuthorizationError(rw, err)
 		return
 	}
@@ -235,7 +239,7 @@ func (p *Plugin) handleListTemplates(rw http.ResponseWriter, req *http.Request, 
 		jsonError(rw, err.Error(), http.StatusBadRequest)
 		return
 	}
-	if err := requireTemplateStatusAccess(pluginCtx, status); err != nil {
+	if err := p.requireTemplateStatusAccess(req, pluginCtx, status); err != nil {
 		writeAuthorizationError(rw, err)
 		return
 	}
@@ -291,7 +295,7 @@ func (p *Plugin) handleGetMetadata(rw http.ResponseWriter, req *http.Request, id
 		jsonError(rw, err.Error(), http.StatusBadRequest)
 		return
 	}
-	if err := requireTemplateStatusAccess(pluginCtx, status); err != nil {
+	if err := p.requireTemplateStatusAccess(req, pluginCtx, status); err != nil {
 		writeAuthorizationError(rw, err)
 		return
 	}
@@ -318,7 +322,7 @@ func (p *Plugin) handleGetTemplateJSON(rw http.ResponseWriter, req *http.Request
 		jsonError(rw, err.Error(), http.StatusBadRequest)
 		return
 	}
-	if err := requireTemplateStatusAccess(pluginCtx, status); err != nil {
+	if err := p.requireTemplateStatusAccess(req, pluginCtx, status); err != nil {
 		writeAuthorizationError(rw, err)
 		return
 	}
@@ -340,7 +344,7 @@ func (p *Plugin) handleGetVariables(rw http.ResponseWriter, req *http.Request, i
 		jsonError(rw, err.Error(), http.StatusBadRequest)
 		return
 	}
-	if err := requireTemplateStatusAccess(pluginCtx, status); err != nil {
+	if err := p.requireTemplateStatusAccess(req, pluginCtx, status); err != nil {
 		writeAuthorizationError(rw, err)
 		return
 	}
@@ -362,7 +366,7 @@ func (p *Plugin) handleGetImage(rw http.ResponseWriter, req *http.Request, id st
 		jsonError(rw, err.Error(), http.StatusBadRequest)
 		return
 	}
-	if err := requireTemplateStatusAccess(pluginCtx, status); err != nil {
+	if err := p.requireTemplateStatusAccess(req, pluginCtx, status); err != nil {
 		writeAuthorizationError(rw, err)
 		return
 	}
@@ -380,7 +384,7 @@ func (p *Plugin) handleGetImage(rw http.ResponseWriter, req *http.Request, id st
 
 // handleUploadTemplate handles new template uploads with backend authorization and validation.
 func (p *Plugin) handleUploadTemplate(rw http.ResponseWriter, req *http.Request, pluginCtx backend.PluginContext) {
-	if err := requireMinimumRole(pluginCtx, accessEditor, "publish templates"); err != nil {
+	if err := p.requireMarketplaceAccess(req, pluginCtx, actionTemplatesPublish, "publish templates"); err != nil {
 		writeAuthorizationError(rw, err)
 		return
 	}
@@ -457,8 +461,8 @@ func (p *Plugin) handleUploadTemplate(rw http.ResponseWriter, req *http.Request,
 	jsonResponse(rw, parsedUpload.metadata, http.StatusCreated)
 }
 
-func (p *Plugin) handleApproveTemplate(rw http.ResponseWriter, id string, pluginCtx backend.PluginContext) {
-	if err := requireMinimumRole(pluginCtx, accessAdmin, "approve templates"); err != nil {
+func (p *Plugin) handleApproveTemplate(rw http.ResponseWriter, req *http.Request, id string, pluginCtx backend.PluginContext) {
+	if err := p.requireMarketplaceAccess(req, pluginCtx, actionTemplatesApprove, "approve templates"); err != nil {
 		writeAuthorizationError(rw, err)
 		return
 	}
@@ -499,7 +503,7 @@ func (p *Plugin) handleApproveTemplate(rw http.ResponseWriter, id string, plugin
 
 // handleDeleteTemplate removes a template from storage.
 func (p *Plugin) handleDeleteTemplate(rw http.ResponseWriter, req *http.Request, id string, pluginCtx backend.PluginContext) {
-	if err := requireMinimumRole(pluginCtx, accessAdmin, "delete templates"); err != nil {
+	if err := p.requireMarketplaceAccess(req, pluginCtx, actionTemplatesDelete, "delete templates"); err != nil {
 		writeAuthorizationError(rw, err)
 		return
 	}
