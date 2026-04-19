@@ -43,6 +43,7 @@ log "Building frontend bundle version $PACKAGE_VERSION"
 
 log "Copying frontend assets"
 cp -R "$DIST_DIR/." "$PACKAGE_ROOT/"
+cp "$REPO_ROOT/README.md" "$PACKAGE_ROOT/README.md"
 
 log "Building linux/amd64 backend binary"
 (

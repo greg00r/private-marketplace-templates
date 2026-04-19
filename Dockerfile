@@ -66,6 +66,7 @@ LABEL org.opencontainers.image.version=$PLUGIN_BUILD_VERSION
 
 COPY --from=frontend-builder /plugin/dist/ /plugin/greg00r-templatehub-app/
 COPY --from=backend-builder /plugin/dist/ /plugin/greg00r-templatehub-app/
+COPY README.md /plugin/greg00r-templatehub-app/README.md
 COPY templates/ /seed-templates/
 
 RUN chmod +x /plugin/greg00r-templatehub-app/gpx_templatehub_linux_amd64 \
