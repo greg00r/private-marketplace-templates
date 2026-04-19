@@ -8,6 +8,7 @@ import { ImportModal } from '../components/ImportModal';
 import { MarkdownContent } from '../components/MarkdownContent';
 import type { TemplateMetadata, TemplateVariables } from '../types';
 import { buildPluginPath, navigateToPath } from '../utils/navigation';
+import { getTemplateFolderLabel, getTemplateLastPublisherLabel } from '../utils/templateMetadata';
 
 interface Props {
   templateId?: string;
@@ -83,6 +84,8 @@ export function TemplateDetail({ templateId }: Props) {
   const allRequiredDatasourcesAvailable =
     (metadata.requiredDatasources ?? []).length === 0 ||
     metadata.requiredDatasources.every((datasource) => datasourceAvailability[datasource.type] !== false);
+  const folderLabel = getTemplateFolderLabel(metadata);
+  const lastPublisher = getTemplateLastPublisherLabel(metadata);
 
   return (
     <div style={{ padding: '24px', maxWidth: '960px' }}>
@@ -103,7 +106,9 @@ export function TemplateDetail({ templateId }: Props) {
             </Text>
             <Stack gap={1} wrap="wrap">
               <Text color="secondary">by {metadata.author}</Text>
+              <Text color="secondary">folder {folderLabel}</Text>
               <Text color="secondary">version {metadata.version}</Text>
+              <Text color="secondary">last pushed by {lastPublisher}</Text>
               <Text color="secondary">updated {metadata.updatedAt}</Text>
             </Stack>
           </Stack>

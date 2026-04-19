@@ -1,0 +1,12 @@
+.git
+.github
+node_modules
+dist
+coverage
+.idea
+.vscode
+*.log
+*.tmp
+*.swp
+*.swo
+README.md

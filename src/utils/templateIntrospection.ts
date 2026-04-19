@@ -51,7 +51,9 @@ export function extractTemplateVariablesFromDashboard(dashboard: GrafanaDashboar
         ? variable.datasource
         : (variable.datasource as { uid?: string; type?: string } | undefined)?.uid,
     datasourceType:
-      typeof variable.datasource === 'object'
+      variable.type === 'datasource' && typeof variable.query === 'string'
+        ? variable.query
+        : typeof variable.datasource === 'object'
         ? (variable.datasource as { type?: string }).type
         : undefined,
     query: typeof variable.query === 'string' ? variable.query : '',

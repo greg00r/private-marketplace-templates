@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useRef } from 'react';
 import { css } from '@emotion/css';
 import { GrafanaTheme2 } from '@grafana/data';
 import { Button, Text, useStyles2 } from '@grafana/ui';
@@ -12,10 +12,27 @@ interface Props {
 
 export function FileUploadArea({ accept, buttonLabel, helpText, onSelect }: Props) {
   const styles = useStyles2(getStyles);
+  const inputRef = useRef<HTMLInputElement | null>(null);
+
+  const openFilePicker = () => {
+    inputRef.current?.click();
+  };
 
   return (
-    <label className={styles.wrapper}>
+    <div
+      className={styles.wrapper}
+      role="button"
+      tabIndex={0}
+      onClick={openFilePicker}
+      onKeyDown={(event) => {
+        if (event.key === 'Enter' || event.key === ' ') {
+          event.preventDefault();
+          openFilePicker();
+        }
+      }}
+    >
       <input
+        ref={inputRef}
         type="file"
         accept={accept}
         className={styles.input}
@@ -27,10 +44,18 @@ export function FileUploadArea({ accept, buttonLabel, helpText, onSelect }: Prop
         }}
       />
       <Text color="secondary">{helpText}</Text>
-      <Button type="button" variant="secondary">
+      <Button
+        type="button"
+        variant="secondary"
+        onClick={(event) => {
+          event.preventDefault();
+          event.stopPropagation();
+          openFilePicker();
+        }}
+      >
         {buttonLabel}
       </Button>
-    </label>
+    </div>
   );
 }
 

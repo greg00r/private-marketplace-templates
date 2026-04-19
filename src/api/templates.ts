@@ -1,27 +1,31 @@
 import { getBackendSrv } from '@grafana/runtime';
-import type { GrafanaDashboard, Template, TemplateMetadata, TemplateVariables } from '../types';
+import type { GrafanaDashboard, Template, TemplateMetadata, TemplateStatus, TemplateVariables } from '../types';
 
 const PLUGIN_ID = 'gregoor-private-marketplace-app';
 const BASE_URL = `/api/plugins/${PLUGIN_ID}/resources`;
 
-export async function listTemplates(): Promise<Template[]> {
-  return getBackendSrv().get<Template[]>(`${BASE_URL}/templates`);
+function withStatus(status: TemplateStatus = 'approved'): string {
+  return status === 'pending' ? '?status=pending' : '';
 }
 
-export async function getTemplateMetadata(id: string): Promise<TemplateMetadata> {
-  return getBackendSrv().get<TemplateMetadata>(`${BASE_URL}/templates/${id}`);
+export async function listTemplates(status: TemplateStatus = 'approved'): Promise<Template[]> {
+  return getBackendSrv().get<Template[]>(`${BASE_URL}/templates${withStatus(status)}`);
 }
 
-export async function getTemplateJson(id: string): Promise<GrafanaDashboard> {
-  return getBackendSrv().get<GrafanaDashboard>(`${BASE_URL}/templates/${id}/template`);
+export async function getTemplateMetadata(id: string, status: TemplateStatus = 'approved'): Promise<TemplateMetadata> {
+  return getBackendSrv().get<TemplateMetadata>(`${BASE_URL}/templates/${id}${withStatus(status)}`);
 }
 
-export async function getTemplateVariables(id: string): Promise<TemplateVariables> {
-  return getBackendSrv().get<TemplateVariables>(`${BASE_URL}/templates/${id}/variables`);
+export async function getTemplateJson(id: string, status: TemplateStatus = 'approved'): Promise<GrafanaDashboard> {
+  return getBackendSrv().get<GrafanaDashboard>(`${BASE_URL}/templates/${id}/template${withStatus(status)}`);
 }
 
-export function getTemplateImageUrl(id: string): string {
-  return `${BASE_URL}/templates/${id}/image`;
+export async function getTemplateVariables(id: string, status: TemplateStatus = 'approved'): Promise<TemplateVariables> {
+  return getBackendSrv().get<TemplateVariables>(`${BASE_URL}/templates/${id}/variables${withStatus(status)}`);
+}
+
+export function getTemplateImageUrl(id: string, status: TemplateStatus = 'approved'): string {
+  return `${BASE_URL}/templates/${id}/image${withStatus(status)}`;
 }
 
 export interface UploadTemplatePayload {
@@ -64,8 +68,12 @@ export async function uploadTemplate(payload: UploadTemplatePayload): Promise<Te
   return parsedBody as TemplateMetadata;
 }
 
-export async function deleteTemplate(id: string): Promise<void> {
-  await getBackendSrv().delete(`${BASE_URL}/templates/${id}`);
+export async function approveTemplate(id: string): Promise<TemplateMetadata> {
+  return getBackendSrv().post<TemplateMetadata>(`${BASE_URL}/templates/${id}/approve`, {});
+}
+
+export async function deleteTemplate(id: string, status: TemplateStatus = 'approved'): Promise<void> {
+  await getBackendSrv().delete(`${BASE_URL}/templates/${id}${withStatus(status)}`);
 }
 
 function tryParseJson(value: string): unknown {

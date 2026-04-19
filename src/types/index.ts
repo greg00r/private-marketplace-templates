@@ -23,17 +23,25 @@ export interface RequiredDatasource {
   name: string;
 }
 
+export type TemplateStatus = 'approved' | 'pending';
+
 export interface TemplateMetadata {
   id: string;
   title: string;
   shortDescription: string;
   longDescription: string;
   tags: string[];
+  folder?: string;
   requiredDatasources: RequiredDatasource[];
   author: string;
   version: string;
   createdAt: string;
   updatedAt: string;
+  createdBy?: string;
+  updatedBy?: string;
+  status?: TemplateStatus;
+  approvedAt?: string;
+  approvedBy?: string;
 }
 
 // ─── Template Variables ──────────────────────────────────────────────────────
@@ -111,6 +119,8 @@ export interface DatasourceMapping {
   templateUid: string;
   templateType: string;
   localUid: string;
+  source?: 'reference' | 'required' | 'variable';
+  requiredName?: string;
 }
 
 export interface ImportFormValues {
@@ -134,4 +144,10 @@ export interface GrafanaDataSource {
   name: string;
   type: string;
   isDefault?: boolean;
+}
+
+export interface GrafanaDatasourcePlugin {
+  id: string;
+  name: string;
+  type: 'datasource';
 }

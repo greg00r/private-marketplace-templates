@@ -26,6 +26,8 @@ export default async (env: WebpackEnv): Promise<Configuration> => {
   const srcDir = path.resolve(baseDir, 'src');
   const distDir = path.resolve(baseDir, 'dist');
   const isProduction = env.production === true;
+  const buildVersion = process.env.PLUGIN_BUILD_VERSION || process.env.npm_package_version || '1.0.0';
+  const buildDate = process.env.PLUGIN_BUILD_DATE || new Date().toISOString().substring(0, 10);
 
   const config: Configuration = {
     context: baseDir,
@@ -140,7 +142,7 @@ export default async (env: WebpackEnv): Promise<Configuration> => {
             transform: (content: Buffer) => {
               return content
                 .toString()
-                .replace(/\%VERSION\%/g, process.env.npm_package_version || '');
+                .replace(/\%VERSION\%/g, buildVersion);
             },
           },
           { from: 'img', to: 'img', noErrorOnMissing: true },
@@ -156,8 +158,8 @@ export default async (env: WebpackEnv): Promise<Configuration> => {
                 dir: distDir,
                 files: ['plugin.json'],
                 rules: [
-                  { search: /\%VERSION\%/g, replace: process.env.npm_package_version || '1.0.0' },
-                  { search: /\%TODAY\%/g, replace: new Date().toISOString().substring(0, 10) },
+                  { search: /\%VERSION\%/g, replace: buildVersion },
+                  { search: /\%TODAY\%/g, replace: buildDate },
                 ],
               },
             ]),

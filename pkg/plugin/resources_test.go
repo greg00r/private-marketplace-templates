@@ -1,6 +1,18 @@
 package plugin
 
-import "testing"
+import (
+	"encoding/json"
+	"errors"
+	"net/http"
+	"net/http/httptest"
+	"strings"
+	"testing"
+
+	"github.com/grafana/grafana-plugin-sdk-go/backend"
+	"github.com/grafana/grafana-plugin-sdk-go/backend/log"
+
+	"github.com/greg00r/grafana-private-marketplace/pkg/plugin/storage"
+)
 
 func TestNormalizeResourcePath(t *testing.T) {
 	testCases := []struct {
@@ -46,4 +58,302 @@ func TestSlugify(t *testing.T) {
 	if got != want {
 		t.Fatalf("slugify returned %q, want %q", got, want)
 	}
+}
+
+func TestHandleUploadTemplateRejectsViewerRole(t *testing.T) {
+	plugin := newTestPlugin(t)
+	req := httptest.NewRequest(http.MethodPost, "/api/plugins/"+pluginID+"/resources/templates", strings.NewReader(validUploadBody()))
+	req.Header.Set("Content-Type", "application/json")
+	req.ContentLength = int64(len(validUploadBody()))
+
+	recorder := httptest.NewRecorder()
+	plugin.handleUploadTemplate(recorder, req, backend.PluginContext{
+		User: &backend.User{Login: "viewer", Role: "Viewer"},
+	})
+
+	if recorder.Code != http.StatusForbidden {
+		t.Fatalf("status = %d, want %d; body=%s", recorder.Code, http.StatusForbidden, recorder.Body.String())
+	}
+}
+
+func TestHandleUploadTemplateCreatesTemplateAndAuditMetadata(t *testing.T) {
+	plugin := newTestPlugin(t)
+	body := validUploadBody()
+	req := httptest.NewRequest(http.MethodPost, "/api/plugins/"+pluginID+"/resources/templates", strings.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	req.ContentLength = int64(len(body))
+
+	recorder := httptest.NewRecorder()
+	plugin.handleUploadTemplate(recorder, req, backend.PluginContext{
+		User: &backend.User{Login: "dev.user", Name: "Dev User", Role: "Editor"},
+	})
+
+	if recorder.Code != http.StatusCreated {
+		t.Fatalf("status = %d, want %d; body=%s", recorder.Code, http.StatusCreated, recorder.Body.String())
+	}
+
+	storedMetadata, err := plugin.storage.GetMetadata("demo-dashboard-1-0-0", storage.TemplateStatePending)
+	if err != nil {
+		t.Fatalf("GetMetadata returned error: %v", err)
+	}
+
+	var metadata TemplateMetadata
+	if err := json.Unmarshal(storedMetadata, &metadata); err != nil {
+		t.Fatalf("unmarshal metadata returned error: %v", err)
+	}
+
+	if metadata.Author != "Dev User" {
+		t.Fatalf("metadata.Author = %q, want %q", metadata.Author, "Dev User")
+	}
+	if metadata.CreatedBy != "Dev User" {
+		t.Fatalf("metadata.CreatedBy = %q, want %q", metadata.CreatedBy, "Dev User")
+	}
+	if metadata.UpdatedBy != "Dev User" {
+		t.Fatalf("metadata.UpdatedBy = %q, want %q", metadata.UpdatedBy, "Dev User")
+	}
+	if metadata.Version != defaultTemplateVer {
+		t.Fatalf("metadata.Version = %q, want %q", metadata.Version, defaultTemplateVer)
+	}
+	if metadata.Status != TemplateStatusPending {
+		t.Fatalf("metadata.Status = %q, want %q", metadata.Status, TemplateStatusPending)
+	}
+}
+
+func TestHandleUploadTemplateOverridesSpoofedAuthorWithLoggedInUser(t *testing.T) {
+	plugin := newTestPlugin(t)
+	body := `{
+		"templateJson": {"title":"Demo Dashboard","panels":[]},
+		"metadata": {
+			"title":"Demo Dashboard",
+			"shortDescription":"Short description",
+			"author":"Spoofed Author"
+		},
+		"variablesJson": {
+			"variables": [
+				{"name":"cluster","label":"Cluster","type":"textbox"}
+			]
+		}
+	}`
+
+	req := httptest.NewRequest(http.MethodPost, "/api/plugins/"+pluginID+"/resources/templates", strings.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	req.ContentLength = int64(len(body))
+
+	recorder := httptest.NewRecorder()
+	plugin.handleUploadTemplate(recorder, req, backend.PluginContext{
+		User: &backend.User{Login: "dev.user", Name: "Dev User", Role: "Editor"},
+	})
+
+	if recorder.Code != http.StatusCreated {
+		t.Fatalf("status = %d, want %d; body=%s", recorder.Code, http.StatusCreated, recorder.Body.String())
+	}
+
+	storedMetadata, err := plugin.storage.GetMetadata("demo-dashboard-1-0-0", storage.TemplateStatePending)
+	if err != nil {
+		t.Fatalf("GetMetadata returned error: %v", err)
+	}
+
+	var metadata TemplateMetadata
+	if err := json.Unmarshal(storedMetadata, &metadata); err != nil {
+		t.Fatalf("unmarshal metadata returned error: %v", err)
+	}
+
+	if metadata.Author != "Dev User" {
+		t.Fatalf("metadata.Author = %q, want %q", metadata.Author, "Dev User")
+	}
+}
+
+func TestHandleUploadTemplateRejectsDuplicateTemplateIDs(t *testing.T) {
+	plugin := newTestPlugin(t)
+	upload := func() *httptest.ResponseRecorder {
+		body := validUploadBody()
+		req := httptest.NewRequest(http.MethodPost, "/api/plugins/"+pluginID+"/resources/templates", strings.NewReader(body))
+		req.Header.Set("Content-Type", "application/json")
+		req.ContentLength = int64(len(body))
+
+		recorder := httptest.NewRecorder()
+		plugin.handleUploadTemplate(recorder, req, backend.PluginContext{
+			User: &backend.User{Login: "editor", Role: "Editor"},
+		})
+		return recorder
+	}
+
+	first := upload()
+	if first.Code != http.StatusCreated {
+		t.Fatalf("first status = %d, want %d; body=%s", first.Code, http.StatusCreated, first.Body.String())
+	}
+
+	second := upload()
+	if second.Code != http.StatusConflict {
+		t.Fatalf("second status = %d, want %d; body=%s", second.Code, http.StatusConflict, second.Body.String())
+	}
+}
+
+func TestHandleUploadTemplateAllowsSameTitleWithDifferentVersion(t *testing.T) {
+	plugin := newTestPlugin(t)
+
+	upload := func(version string) *httptest.ResponseRecorder {
+		body := `{
+			"templateJson": {"title":"Demo Dashboard","panels":[]},
+			"metadata": {"title":"Demo Dashboard","shortDescription":"Short description","version":"` + version + `"},
+			"variablesJson": {"variables":[]}
+		}`
+		req := httptest.NewRequest(http.MethodPost, "/api/plugins/"+pluginID+"/resources/templates", strings.NewReader(body))
+		req.Header.Set("Content-Type", "application/json")
+		req.ContentLength = int64(len(body))
+
+		recorder := httptest.NewRecorder()
+		plugin.handleUploadTemplate(recorder, req, backend.PluginContext{
+			User: &backend.User{Login: "editor", Role: "Editor"},
+		})
+		return recorder
+	}
+
+	first := upload("1.0.0")
+	if first.Code != http.StatusCreated {
+		t.Fatalf("first status = %d, want %d; body=%s", first.Code, http.StatusCreated, first.Body.String())
+	}
+
+	second := upload("1.1.0")
+	if second.Code != http.StatusCreated {
+		t.Fatalf("second status = %d, want %d; body=%s", second.Code, http.StatusCreated, second.Body.String())
+	}
+}
+
+func TestHandleUploadTemplateRejectsDuplicateVariableNames(t *testing.T) {
+	plugin := newTestPlugin(t)
+	body := `{
+		"templateJson": {"title":"Demo Dashboard","panels":[]},
+		"metadata": {"title":"Demo Dashboard","shortDescription":"Short description"},
+		"variablesJson": {
+			"variables": [
+				{"name":"cluster","label":"Cluster","type":"textbox"},
+				{"name":"cluster","label":"Cluster copy","type":"textbox"}
+			]
+		}
+	}`
+
+	req := httptest.NewRequest(http.MethodPost, "/api/plugins/"+pluginID+"/resources/templates", strings.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	req.ContentLength = int64(len(body))
+
+	recorder := httptest.NewRecorder()
+	plugin.handleUploadTemplate(recorder, req, backend.PluginContext{
+		User: &backend.User{Login: "editor", Role: "Editor"},
+	})
+
+	if recorder.Code != http.StatusBadRequest {
+		t.Fatalf("status = %d, want %d; body=%s", recorder.Code, http.StatusBadRequest, recorder.Body.String())
+	}
+}
+
+func TestHandleDeleteTemplateRequiresAdminRole(t *testing.T) {
+	plugin := newTestPlugin(t)
+	recorder := httptest.NewRecorder()
+
+	req := httptest.NewRequest(http.MethodDelete, "/api/plugins/"+pluginID+"/resources/templates/demo-dashboard", nil)
+	plugin.handleDeleteTemplate(recorder, req, "demo-dashboard", backend.PluginContext{
+		User: &backend.User{Login: "editor", Role: "Editor"},
+	})
+
+	if recorder.Code != http.StatusForbidden {
+		t.Fatalf("status = %d, want %d; body=%s", recorder.Code, http.StatusForbidden, recorder.Body.String())
+	}
+}
+
+func TestHandleListTemplatesHidesPendingTemplatesFromViewer(t *testing.T) {
+	plugin := newTestPlugin(t)
+	body := validUploadBody()
+	req := httptest.NewRequest(http.MethodPost, "/api/plugins/"+pluginID+"/resources/templates", strings.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	req.ContentLength = int64(len(body))
+
+	recorder := httptest.NewRecorder()
+	plugin.handleUploadTemplate(recorder, req, backend.PluginContext{
+		User: &backend.User{Login: "editor", Role: "Editor"},
+	})
+	if recorder.Code != http.StatusCreated {
+		t.Fatalf("upload status = %d, want %d; body=%s", recorder.Code, http.StatusCreated, recorder.Body.String())
+	}
+
+	listReq := httptest.NewRequest(http.MethodGet, "/api/plugins/"+pluginID+"/resources/templates?status=pending", nil)
+	listRecorder := httptest.NewRecorder()
+	plugin.handleListTemplates(listRecorder, listReq, backend.PluginContext{
+		User: &backend.User{Login: "viewer", Role: "Viewer"},
+	})
+
+	if listRecorder.Code != http.StatusForbidden {
+		t.Fatalf("status = %d, want %d; body=%s", listRecorder.Code, http.StatusForbidden, listRecorder.Body.String())
+	}
+}
+
+func TestHandleApproveTemplateMovesTemplateToApprovedQueue(t *testing.T) {
+	plugin := newTestPlugin(t)
+	body := validUploadBody()
+	uploadReq := httptest.NewRequest(http.MethodPost, "/api/plugins/"+pluginID+"/resources/templates", strings.NewReader(body))
+	uploadReq.Header.Set("Content-Type", "application/json")
+	uploadReq.ContentLength = int64(len(body))
+
+	uploadRecorder := httptest.NewRecorder()
+	plugin.handleUploadTemplate(uploadRecorder, uploadReq, backend.PluginContext{
+		User: &backend.User{Login: "editor", Role: "Editor"},
+	})
+	if uploadRecorder.Code != http.StatusCreated {
+		t.Fatalf("upload status = %d, want %d; body=%s", uploadRecorder.Code, http.StatusCreated, uploadRecorder.Body.String())
+	}
+
+	approveRecorder := httptest.NewRecorder()
+	plugin.handleApproveTemplate(approveRecorder, "demo-dashboard-1-0-0", backend.PluginContext{
+		User: &backend.User{Login: "admin", Name: "Admin User", Role: "Admin"},
+	})
+	if approveRecorder.Code != http.StatusOK {
+		t.Fatalf("approve status = %d, want %d; body=%s", approveRecorder.Code, http.StatusOK, approveRecorder.Body.String())
+	}
+
+	if _, err := plugin.storage.GetMetadata("demo-dashboard-1-0-0", storage.TemplateStatePending); !errors.Is(err, storage.ErrTemplateNotFound) {
+		t.Fatalf("pending metadata error = %v, want ErrTemplateNotFound", err)
+	}
+
+	approvedMetadataBytes, err := plugin.storage.GetMetadata("demo-dashboard-1-0-0", storage.TemplateStateApproved)
+	if err != nil {
+		t.Fatalf("approved GetMetadata returned error: %v", err)
+	}
+
+	var approvedMetadata TemplateMetadata
+	if err := json.Unmarshal(approvedMetadataBytes, &approvedMetadata); err != nil {
+		t.Fatalf("unmarshal approved metadata returned error: %v", err)
+	}
+
+	if approvedMetadata.Status != TemplateStatusApproved {
+		t.Fatalf("approved metadata.Status = %q, want %q", approvedMetadata.Status, TemplateStatusApproved)
+	}
+	if approvedMetadata.ApprovedBy != "Admin User" {
+		t.Fatalf("approved metadata.ApprovedBy = %q, want %q", approvedMetadata.ApprovedBy, "Admin User")
+	}
+}
+
+func newTestPlugin(t *testing.T) *Plugin {
+	t.Helper()
+
+	store, err := storage.NewLocalStorage(t.TempDir())
+	if err != nil {
+		t.Fatalf("NewLocalStorage returned error: %v", err)
+	}
+
+	return &Plugin{
+		storage: store,
+		logger:  log.NewNullLogger(),
+	}
+}
+
+func validUploadBody() string {
+	return `{
+		"templateJson": {"title":"Demo Dashboard","panels":[]},
+		"metadata": {"title":"Demo Dashboard","shortDescription":"Short description"},
+		"variablesJson": {
+			"variables": [
+				{"name":"cluster","label":"Cluster","type":"textbox"}
+			]
+		}
+	}`
 }

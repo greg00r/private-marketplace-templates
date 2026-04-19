@@ -4,15 +4,21 @@ import { GrafanaTheme2 } from '@grafana/data';
 import { useStyles2 } from '@grafana/ui';
 import { getTemplateImageUrl } from '../api/templates';
 import type { Template } from '../types';
+import { getTemplateFolderLabel, getTemplateLastPublisherLabel } from '../utils/templateMetadata';
 
 interface Props {
   template: Template;
   onClick: () => void;
+  canDelete?: boolean;
+  deleting?: boolean;
+  onDelete?: () => void;
 }
 
-export function TemplateCard({ template, onClick }: Props) {
+export function TemplateCard({ template, onClick, canDelete = false, deleting = false, onDelete }: Props) {
   const styles = useStyles2(getStyles);
   const { metadata } = template;
+  const folderLabel = getTemplateFolderLabel(metadata);
+  const lastPublisher = getTemplateLastPublisherLabel(metadata);
 
   return (
     <div
@@ -63,11 +69,33 @@ export function TemplateCard({ template, onClick }: Props) {
         </div>
 
         <div className={styles.footer}>
-          <span className={styles.meta}>v{metadata.version} by {metadata.author}</span>
-          {metadata.requiredDatasources?.length ? (
-            <span className={styles.meta}>
-              {metadata.requiredDatasources.map((datasource) => datasource.type).join(', ')}
-            </span>
+          <div className={styles.metaStack}>
+            <span className={styles.meta}>Folder: {folderLabel}</span>
+            <span className={styles.meta}>Version: {metadata.version}</span>
+            <span className={styles.meta}>Last pushed by: {lastPublisher}</span>
+            {metadata.requiredDatasources?.length ? (
+              <span className={styles.meta}>
+                Datasources: {metadata.requiredDatasources.map((datasource) => datasource.type).join(', ')}
+              </span>
+            ) : null}
+          </div>
+
+          {canDelete && onDelete ? (
+            <button
+              type="button"
+              className={styles.deleteButton}
+              onClick={(event) => {
+                event.preventDefault();
+                event.stopPropagation();
+                onDelete();
+              }}
+              onKeyDown={(event) => {
+                event.stopPropagation();
+              }}
+              disabled={deleting}
+            >
+              {deleting ? 'Deleting...' : 'Delete'}
+            </button>
           ) : null}
         </div>
       </div>
@@ -153,12 +181,33 @@ function getStyles(theme: GrafanaTheme2) {
     footer: css({
       display: 'flex',
       justifyContent: 'space-between',
+      alignItems: 'flex-end',
       gap: theme.spacing(1),
       flexWrap: 'wrap',
+    }),
+    metaStack: css({
+      display: 'flex',
+      flexDirection: 'column',
+      gap: theme.spacing(0.5),
     }),
     meta: css({
       color: theme.colors.text.secondary,
       fontSize: theme.typography.bodySmall.fontSize,
+    }),
+    deleteButton: css({
+      minHeight: '32px',
+      padding: `0 ${theme.spacing(1.5)}`,
+      borderRadius: theme.shape.radius.default,
+      border: `1px solid ${theme.colors.error.border}`,
+      background: theme.colors.error.transparent,
+      color: theme.colors.error.text,
+      fontSize: theme.typography.bodySmall.fontSize,
+      fontWeight: theme.typography.fontWeightMedium,
+      cursor: 'pointer',
+      '&:disabled': {
+        opacity: 0.6,
+        cursor: 'not-allowed',
+      },
     }),
   };
 }

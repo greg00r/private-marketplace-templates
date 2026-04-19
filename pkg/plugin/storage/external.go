@@ -8,6 +8,7 @@ import (
 	"io"
 	"mime/multipart"
 	"net/http"
+	"strings"
 	"time"
 )
 
@@ -64,9 +65,23 @@ func (s *ExternalStorage) get(path string) ([]byte, error) {
 	return io.ReadAll(resp.Body)
 }
 
+func pathWithState(path string, state TemplateState) string {
+	normalizedState := NormalizeTemplateState(state)
+	if normalizedState == TemplateStateApproved {
+		return path
+	}
+
+	separator := "?"
+	if strings.Contains(path, "?") {
+		separator = "&"
+	}
+
+	return path + separator + "status=" + string(normalizedState)
+}
+
 // ListTemplates calls GET /templates on the external API and returns each metadata blob.
-func (s *ExternalStorage) ListTemplates() ([][]byte, error) {
-	data, err := s.get("/templates")
+func (s *ExternalStorage) ListTemplates(state TemplateState) ([][]byte, error) {
+	data, err := s.get(pathWithState("/templates", state))
 	if err != nil {
 		return nil, err
 	}
@@ -83,20 +98,20 @@ func (s *ExternalStorage) ListTemplates() ([][]byte, error) {
 	return [][]byte{data}, nil
 }
 
-func (s *ExternalStorage) GetMetadata(id string) ([]byte, error) {
-	return s.get("/templates/" + id)
+func (s *ExternalStorage) GetMetadata(id string, state TemplateState) ([]byte, error) {
+	return s.get(pathWithState("/templates/"+id, state))
 }
 
-func (s *ExternalStorage) GetTemplate(id string) ([]byte, error) {
-	return s.get("/templates/" + id + "/template")
+func (s *ExternalStorage) GetTemplate(id string, state TemplateState) ([]byte, error) {
+	return s.get(pathWithState("/templates/"+id+"/template", state))
 }
 
-func (s *ExternalStorage) GetVariables(id string) ([]byte, error) {
-	return s.get("/templates/" + id + "/variables")
+func (s *ExternalStorage) GetVariables(id string, state TemplateState) ([]byte, error) {
+	return s.get(pathWithState("/templates/"+id+"/variables", state))
 }
 
-func (s *ExternalStorage) GetImage(id string) ([]byte, string, error) {
-	req, err := http.NewRequest(http.MethodGet, s.baseURL+"/templates/"+id+"/image", nil)
+func (s *ExternalStorage) GetImage(id string, state TemplateState) ([]byte, string, error) {
+	req, err := http.NewRequest(http.MethodGet, s.baseURL+pathWithState("/templates/"+id+"/image", state), nil)
 	if err != nil {
 		return nil, "", err
 	}
@@ -116,8 +131,23 @@ func (s *ExternalStorage) GetImage(id string) ([]byte, string, error) {
 	return data, resp.Header.Get("Content-Type"), nil
 }
 
+func (s *ExternalStorage) TemplateExists(id string) (bool, error) {
+	for _, state := range []TemplateState{TemplateStateApproved, TemplateStatePending} {
+		_, err := s.GetMetadata(id, state)
+		if err == nil {
+			return true, nil
+		}
+		if err != nil && !strings.Contains(err.Error(), "not found") {
+			return false, err
+		}
+	}
+
+	return false, nil
+}
+
 func (s *ExternalStorage) SaveTemplate(
 	id string,
+	state TemplateState,
 	templateJSON, metadataJSON, variablesJSON []byte,
 	image io.Reader,
 	imageMime string,
@@ -156,7 +186,7 @@ func (s *ExternalStorage) SaveTemplate(
 
 	w.Close()
 
-	req, err := http.NewRequest(http.MethodPost, s.baseURL+"/templates", &body)
+	req, err := http.NewRequest(http.MethodPost, s.baseURL+pathWithState("/templates", state), &body)
 	if err != nil {
 		return err
 	}
@@ -175,8 +205,29 @@ func (s *ExternalStorage) SaveTemplate(
 	return nil
 }
 
-func (s *ExternalStorage) DeleteTemplate(id string) error {
-	req, err := http.NewRequest(http.MethodDelete, s.baseURL+"/templates/"+id, nil)
+func (s *ExternalStorage) ApproveTemplate(id string, metadataJSON []byte) error {
+	req, err := http.NewRequest(http.MethodPost, s.baseURL+"/templates/"+id+"/approve", bytes.NewReader(metadataJSON))
+	if err != nil {
+		return err
+	}
+	req.Header.Set("Content-Type", "application/json")
+	s.addAuth(req)
+
+	resp, err := s.client.Do(req)
+	if err != nil {
+		return err
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode >= 400 {
+		msg, _ := io.ReadAll(resp.Body)
+		return fmt.Errorf("upstream returned %d: %s", resp.StatusCode, string(msg))
+	}
+
+	return nil
+}
+
+func (s *ExternalStorage) DeleteTemplate(id string, state TemplateState) error {
+	req, err := http.NewRequest(http.MethodDelete, s.baseURL+pathWithState("/templates/"+id, state), nil)
 	if err != nil {
 		return err
 	}

@@ -3,17 +3,21 @@ import { css } from '@emotion/css';
 import { AppEvents, GrafanaTheme2 } from '@grafana/data';
 import { getAppEvents } from '@grafana/runtime';
 import { useStyles2 } from '@grafana/ui';
-import { listTemplates } from '../api/templates';
+import { deleteTemplate, listTemplates } from '../api/templates';
 import { TemplateCard } from '../components/TemplateCard';
 import type { Template } from '../types';
+import { canCurrentUserApproveTemplates, canCurrentUserPublishTemplates } from '../utils/access';
 import { buildPluginPath, navigateToPath } from '../utils/navigation';
 
 export function Gallery() {
   const appEvents = getAppEvents();
   const styles = useStyles2(getStyles);
+  const canPublishTemplates = canCurrentUserPublishTemplates();
+  const canApproveTemplates = canCurrentUserApproveTemplates();
 
   const [templates, setTemplates] = useState<Template[]>([]);
   const [loading, setLoading] = useState(true);
+  const [busyTemplateId, setBusyTemplateId] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedTag, setSelectedTag] = useState('');
@@ -86,19 +90,73 @@ export function Gallery() {
     });
   }, [searchQuery, selectedDatasourceType, selectedTag, templates]);
 
+  const handleDeleteTemplate = useCallback(
+    async (template: Template) => {
+      if (!canApproveTemplates) {
+        return;
+      }
+
+      const confirmed = window.confirm(`Delete template "${template.metadata.title}" from the approved marketplace?`);
+      if (!confirmed) {
+        return;
+      }
+
+      setBusyTemplateId(template.metadata.id);
+      try {
+        await deleteTemplate(template.metadata.id, 'approved');
+        setTemplates((current) => current.filter((item) => item.metadata.id !== template.metadata.id));
+        appEvents.publish({
+          type: AppEvents.alertSuccess.name,
+          payload: [`Template "${template.metadata.title}" was removed from the marketplace.`],
+        });
+      } catch (deleteError) {
+        const message = deleteError instanceof Error ? deleteError.message : 'Failed to delete template';
+        appEvents.publish({
+          type: AppEvents.alertError.name,
+          payload: ['Delete failed', message],
+        });
+      } finally {
+        setBusyTemplateId(null);
+      }
+    },
+    [appEvents, canApproveTemplates]
+  );
+
   return (
     <div className={styles.page}>
       <div className={styles.hero}>
         <div>
           <h1 className={styles.title}>Dashboard Marketplace</h1>
           <p className={styles.subtitle}>
-            Browse, import, and publish reusable Grafana dashboard templates.
+            Browse approved dashboard templates and import them into this Grafana instance.
           </p>
+          {!canPublishTemplates && (
+            <p className={styles.subtitle}>Template publishing is available to Editors and Admins.</p>
+          )}
+          {canPublishTemplates && (
+            <p className={styles.subtitle}>New submissions go into an approval queue before they appear here.</p>
+          )}
         </div>
 
-        <button className={styles.primaryButton} onClick={() => navigateToPath(buildPluginPath({ type: 'upload' }))}>
-          Upload template
-        </button>
+        <div className={styles.heroActions}>
+          {canApproveTemplates && (
+            <button
+              className={styles.secondaryButton}
+              onClick={() => navigateToPath(buildPluginPath({ type: 'review' }))}
+            >
+              Review submissions
+            </button>
+          )}
+
+          {canPublishTemplates && (
+            <button
+              className={styles.primaryButton}
+              onClick={() => navigateToPath(buildPluginPath({ type: 'upload' }))}
+            >
+              Upload template
+            </button>
+          )}
+        </div>
       </div>
 
       <div className={styles.filters}>
@@ -164,10 +222,21 @@ export function Gallery() {
       {!loading && !error && templates.length === 0 && (
         <div className={styles.infoBox}>
           <strong>No templates available yet</strong>
-          <p className={styles.subtitle}>Start by publishing a dashboard template for your team.</p>
-          <button className={styles.primaryButton} onClick={() => navigateToPath(buildPluginPath({ type: 'upload' }))}>
-            Upload your first template
-          </button>
+          {canPublishTemplates ? (
+            <>
+              <p className={styles.subtitle}>Start by publishing a dashboard template for your team.</p>
+              <button
+                className={styles.primaryButton}
+                onClick={() => navigateToPath(buildPluginPath({ type: 'upload' }))}
+              >
+                Upload your first template
+              </button>
+            </>
+          ) : (
+            <p className={styles.subtitle}>
+              Approved templates will appear here for everyone to import.
+            </p>
+          )}
         </div>
       )}
 
@@ -199,6 +268,9 @@ export function Gallery() {
               <TemplateCard
                 key={template.metadata.id}
                 template={template}
+                canDelete={canApproveTemplates}
+                deleting={busyTemplateId === template.metadata.id}
+                onDelete={() => void handleDeleteTemplate(template)}
                 onClick={() =>
                   navigateToPath(buildPluginPath({ type: 'template', templateId: template.metadata.id }))
                 }
@@ -224,6 +296,11 @@ function getStyles(theme: GrafanaTheme2) {
       justifyContent: 'space-between',
       alignItems: 'flex-start',
       gap: theme.spacing(2),
+      flexWrap: 'wrap',
+    }),
+    heroActions: css({
+      display: 'flex',
+      gap: theme.spacing(1),
       flexWrap: 'wrap',
     }),
     title: css({

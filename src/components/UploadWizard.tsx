@@ -36,6 +36,7 @@ interface Props {
 }
 
 type WizardStep = 0 | 1 | 2 | 3 | 4;
+type DashboardSearchOption = { label: string; value: string; folderTitle?: string };
 
 type EditableTemplateVariable = TemplateVariable & {
   rowId: string;
@@ -60,11 +61,12 @@ export function UploadWizard({ onSuccess }: Props) {
   const [jsonError, setJsonError] = useState<string | null>(null);
   const [dashboardSearch, setDashboardSearch] = useState('');
   const [searchLoading, setSearchLoading] = useState(false);
-  const [searchResults, setSearchResults] = useState<Array<{ label: string; value: string }>>([]);
+  const [searchResults, setSearchResults] = useState<DashboardSearchOption[]>([]);
 
   const [title, setTitle] = useState('');
   const [shortDescription, setShortDescription] = useState('');
   const [longDescription, setLongDescription] = useState('');
+  const [templateFolder, setTemplateFolder] = useState('');
   const [version, setVersion] = useState('1.0.0');
   const [tags, setTags] = useState<string[]>([]);
   const [requiredDatasources, setRequiredDatasources] = useState<RequiredDatasource[]>([]);
@@ -130,6 +132,7 @@ export function UploadWizard({ onSuccess }: Props) {
         results.map((result) => ({
           label: `${result.title} (${result.folderTitle ?? 'General'})`,
           value: result.uid,
+          folderTitle: result.folderTitle,
         }))
       );
     } catch {
@@ -161,10 +164,12 @@ export function UploadWizard({ onSuccess }: Props) {
 
   const handleSelectDashboard = async (uid: string) => {
     try {
+      const selectedResult = searchResults.find((result) => result.value === uid);
       const { dashboard } = await getDashboardByUid(uid);
       const serialized = JSON.stringify(dashboard, null, 2);
       handleJsonTextChange(serialized);
       setDashboardRawText(serialized);
+      setTemplateFolder(selectedResult?.folderTitle ?? '');
     } catch (error) {
       setJsonError(error instanceof Error ? error.message : 'Failed to load dashboard');
     }
@@ -231,6 +236,7 @@ export function UploadWizard({ onSuccess }: Props) {
         shortDescription,
         longDescription,
         tags,
+        folder: templateFolder.trim() || undefined,
         requiredDatasources,
         author: currentAuthor,
         version,
@@ -439,6 +445,17 @@ export function UploadWizard({ onSuccess }: Props) {
             </Field>
 
             <Field
+              label="Folder"
+              description="Optional category or source folder shown on the marketplace card."
+            >
+              <Input
+                value={templateFolder}
+                onChange={(event) => setTemplateFolder(event.currentTarget.value)}
+                placeholder="Platform / Observability / Team A"
+              />
+            </Field>
+
+            <Field
               label="Version"
               required
               invalid={Boolean(version) && !isTemplateVersionValid(version)}
@@ -639,6 +656,9 @@ export function UploadWizard({ onSuccess }: Props) {
                   <Text color="secondary">{shortDescription}</Text>
                   <Text variant="bodySmall" color="secondary">
                     Author: {currentAuthor}
+                  </Text>
+                  <Text variant="bodySmall" color="secondary">
+                    Folder: {templateFolder.trim() || 'General'}
                   </Text>
                   <Text variant="bodySmall" color="secondary">
                     Version: {version || '-'}

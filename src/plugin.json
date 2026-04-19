@@ -33,6 +33,13 @@
       "path": "/a/gregoor-private-marketplace-app/upload",
       "role": "Editor",
       "addToNav": false
+    },
+    {
+      "type": "page",
+      "name": "Review Templates",
+      "path": "/a/gregoor-private-marketplace-app/review",
+      "role": "Admin",
+      "addToNav": true
     }
   ],
   "backend": true,

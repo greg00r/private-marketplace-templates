@@ -2,6 +2,7 @@ package storage
 
 import (
 	"bytes"
+	"errors"
 	"testing"
 )
 
@@ -20,6 +21,7 @@ func TestLocalStorageSaveAndReadTemplate(t *testing.T) {
 
 	if err := store.SaveTemplate(
 		"demo",
+		TemplateStateApproved,
 		templateJSON,
 		metadataJSON,
 		variablesJSON,
@@ -29,7 +31,7 @@ func TestLocalStorageSaveAndReadTemplate(t *testing.T) {
 		t.Fatalf("SaveTemplate returned error: %v", err)
 	}
 
-	listedTemplates, err := store.ListTemplates()
+	listedTemplates, err := store.ListTemplates(TemplateStateApproved)
 	if err != nil {
 		t.Fatalf("ListTemplates returned error: %v", err)
 	}
@@ -37,7 +39,7 @@ func TestLocalStorageSaveAndReadTemplate(t *testing.T) {
 		t.Fatalf("ListTemplates returned %d templates, want 1", len(listedTemplates))
 	}
 
-	gotTemplateJSON, err := store.GetTemplate("demo")
+	gotTemplateJSON, err := store.GetTemplate("demo", TemplateStateApproved)
 	if err != nil {
 		t.Fatalf("GetTemplate returned error: %v", err)
 	}
@@ -45,7 +47,7 @@ func TestLocalStorageSaveAndReadTemplate(t *testing.T) {
 		t.Fatalf("GetTemplate returned %q, want %q", string(gotTemplateJSON), string(templateJSON))
 	}
 
-	gotMetadataJSON, err := store.GetMetadata("demo")
+	gotMetadataJSON, err := store.GetMetadata("demo", TemplateStateApproved)
 	if err != nil {
 		t.Fatalf("GetMetadata returned error: %v", err)
 	}
@@ -53,7 +55,7 @@ func TestLocalStorageSaveAndReadTemplate(t *testing.T) {
 		t.Fatalf("GetMetadata returned %q, want %q", string(gotMetadataJSON), string(metadataJSON))
 	}
 
-	gotVariablesJSON, err := store.GetVariables("demo")
+	gotVariablesJSON, err := store.GetVariables("demo", TemplateStateApproved)
 	if err != nil {
 		t.Fatalf("GetVariables returned error: %v", err)
 	}
@@ -61,7 +63,7 @@ func TestLocalStorageSaveAndReadTemplate(t *testing.T) {
 		t.Fatalf("GetVariables returned %q, want %q", string(gotVariablesJSON), string(variablesJSON))
 	}
 
-	gotImageBytes, gotImageMime, err := store.GetImage("demo")
+	gotImageBytes, gotImageMime, err := store.GetImage("demo", TemplateStateApproved)
 	if err != nil {
 		t.Fatalf("GetImage returned error: %v", err)
 	}
@@ -70,5 +72,75 @@ func TestLocalStorageSaveAndReadTemplate(t *testing.T) {
 	}
 	if string(gotImageBytes) != string(imageBytes) {
 		t.Fatalf("GetImage returned %q, want %q", string(gotImageBytes), string(imageBytes))
+	}
+}
+
+func TestLocalStorageSaveTemplateRejectsDuplicateIDs(t *testing.T) {
+	rootDir := t.TempDir()
+
+	store, err := NewLocalStorage(rootDir)
+	if err != nil {
+		t.Fatalf("NewLocalStorage returned error: %v", err)
+	}
+
+	templateJSON := []byte(`{"title":"Demo Dashboard"}`)
+	metadataJSON := []byte(`{"id":"demo","title":"Demo Dashboard","shortDescription":"Short","longDescription":"Long","tags":["demo"],"requiredDatasources":[],"author":"QA","version":"1.0.0","createdAt":"2026-04-18","updatedAt":"2026-04-18"}`)
+	variablesJSON := []byte(`{"variables":[]}`)
+
+	if err := store.SaveTemplate("demo", TemplateStateApproved, templateJSON, metadataJSON, variablesJSON, bytes.NewReader([]byte("img")), "image/png"); err != nil {
+		t.Fatalf("first SaveTemplate returned error: %v", err)
+	}
+
+	err = store.SaveTemplate("demo", TemplateStatePending, templateJSON, metadataJSON, variablesJSON, nil, "")
+	if !errors.Is(err, ErrTemplateAlreadyExists) {
+		t.Fatalf("second SaveTemplate error = %v, want ErrTemplateAlreadyExists", err)
+	}
+}
+
+func TestLocalStorageApproveTemplateMovesTemplateFromPendingToApproved(t *testing.T) {
+	rootDir := t.TempDir()
+
+	store, err := NewLocalStorage(rootDir)
+	if err != nil {
+		t.Fatalf("NewLocalStorage returned error: %v", err)
+	}
+
+	templateJSON := []byte(`{"title":"Demo Dashboard"}`)
+	pendingMetadataJSON := []byte(`{"id":"demo","title":"Demo Dashboard","shortDescription":"Short","longDescription":"Long","tags":["demo"],"requiredDatasources":[],"author":"QA","version":"1.0.0","createdAt":"2026-04-18","updatedAt":"2026-04-18","status":"pending"}`)
+	approvedMetadataJSON := []byte(`{"id":"demo","title":"Demo Dashboard","shortDescription":"Short","longDescription":"Long","tags":["demo"],"requiredDatasources":[],"author":"QA","version":"1.0.0","createdAt":"2026-04-18","updatedAt":"2026-04-19","status":"approved","approvedAt":"2026-04-19","approvedBy":"Admin User"}`)
+	variablesJSON := []byte(`{"variables":[]}`)
+
+	if err := store.SaveTemplate("demo", TemplateStatePending, templateJSON, pendingMetadataJSON, variablesJSON, nil, ""); err != nil {
+		t.Fatalf("SaveTemplate returned error: %v", err)
+	}
+
+	if err := store.ApproveTemplate("demo", approvedMetadataJSON); err != nil {
+		t.Fatalf("ApproveTemplate returned error: %v", err)
+	}
+
+	if _, err := store.GetMetadata("demo", TemplateStatePending); !errors.Is(err, ErrTemplateNotFound) {
+		t.Fatalf("GetMetadata pending error = %v, want ErrTemplateNotFound", err)
+	}
+
+	gotMetadataJSON, err := store.GetMetadata("demo", TemplateStateApproved)
+	if err != nil {
+		t.Fatalf("GetMetadata approved returned error: %v", err)
+	}
+	if string(gotMetadataJSON) != string(approvedMetadataJSON) {
+		t.Fatalf("approved metadata = %q, want %q", string(gotMetadataJSON), string(approvedMetadataJSON))
+	}
+}
+
+func TestLocalStorageDeleteTemplateReturnsNotFoundForMissingTemplate(t *testing.T) {
+	rootDir := t.TempDir()
+
+	store, err := NewLocalStorage(rootDir)
+	if err != nil {
+		t.Fatalf("NewLocalStorage returned error: %v", err)
+	}
+
+	err = store.DeleteTemplate("missing", TemplateStatePending)
+	if !errors.Is(err, ErrTemplateNotFound) {
+		t.Fatalf("DeleteTemplate error = %v, want ErrTemplateNotFound", err)
 	}
 }

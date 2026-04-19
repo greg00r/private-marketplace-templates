@@ -77,13 +77,13 @@ func NewPlugin(_ context.Context, settings backend.AppInstanceSettings) (instanc
 // CallResource handles all HTTP resource calls routed through /api/plugins/<id>/resources/*.
 func (p *Plugin) CallResource(ctx context.Context, req *backend.CallResourceRequest, sender backend.CallResourceResponseSender) error {
 	// Convert the SDK request to a standard http.Request for use with our handler.
-	httpReq, err := toHTTPRequest(req)
+	httpReq, err := toHTTPRequest(ctx, req)
 	if err != nil {
 		return err
 	}
 
 	rw := &responseWriterBuffer{}
-	p.handleResources(rw, httpReq)
+	p.handleResources(rw, httpReq, req.PluginContext)
 
 	return sender.Send(&backend.CallResourceResponse{
 		Status:  rw.status,
@@ -121,11 +121,12 @@ func parseSettings(settings backend.AppInstanceSettings) (PluginSettings, Plugin
 // ── HTTP adapter ─────────────────────────────────────────────────────────────
 
 // toHTTPRequest converts a backend.CallResourceRequest to a standard *http.Request.
-func toHTTPRequest(req *backend.CallResourceRequest) (*http.Request, error) {
-	httpReq, err := http.NewRequest(req.Method, "/"+req.Path, bytes.NewReader(req.Body))
+func toHTTPRequest(ctx context.Context, req *backend.CallResourceRequest) (*http.Request, error) {
+	httpReq, err := http.NewRequestWithContext(ctx, req.Method, "/"+req.Path, bytes.NewReader(req.Body))
 	if err != nil {
 		return nil, fmt.Errorf("building http.Request: %w", err)
 	}
+	httpReq.ContentLength = int64(len(req.Body))
 	for k, vals := range req.Headers {
 		for _, v := range vals {
 			httpReq.Header.Add(k, v)

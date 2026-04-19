@@ -3,6 +3,7 @@ export const PLUGIN_ROOT = '/a/gregoor-private-marketplace-app';
 export type PluginRoute =
   | { type: 'gallery' }
   | { type: 'upload' }
+  | { type: 'review' }
   | { type: 'template'; templateId: string };
 
 export function normalizePath(pathname: string): string {
@@ -20,6 +21,10 @@ export function normalizePath(pathname: string): string {
 export function buildPluginPath(route: PluginRoute): string {
   if (route.type === 'upload') {
     return `${PLUGIN_ROOT}/upload`;
+  }
+
+  if (route.type === 'review') {
+    return `${PLUGIN_ROOT}/review`;
   }
 
   if (route.type === 'template') {
@@ -44,6 +49,10 @@ export function getCurrentPluginRoute(pathname: string = window.location.pathnam
 
   if (relativePath === 'upload') {
     return { type: 'upload' };
+  }
+
+  if (relativePath === 'review') {
+    return { type: 'review' };
   }
 
   if (relativePath.startsWith('template/')) {

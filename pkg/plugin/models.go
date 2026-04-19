@@ -1,5 +1,12 @@
 package plugin
 
+type TemplateStatus string
+
+const (
+	TemplateStatusApproved TemplateStatus = "approved"
+	TemplateStatusPending  TemplateStatus = "pending"
+)
+
 // TemplateMetadata holds descriptive information about a dashboard template.
 type TemplateMetadata struct {
 	ID                  string               `json:"id"`
@@ -7,11 +14,17 @@ type TemplateMetadata struct {
 	ShortDescription    string               `json:"shortDescription"`
 	LongDescription     string               `json:"longDescription"`
 	Tags                []string             `json:"tags"`
+	Folder              string               `json:"folder,omitempty"`
 	RequiredDatasources []RequiredDatasource `json:"requiredDatasources"`
 	Author              string               `json:"author"`
 	Version             string               `json:"version"`
 	CreatedAt           string               `json:"createdAt"`
 	UpdatedAt           string               `json:"updatedAt"`
+	CreatedBy           string               `json:"createdBy,omitempty"`
+	UpdatedBy           string               `json:"updatedBy,omitempty"`
+	Status              TemplateStatus       `json:"status,omitempty"`
+	ApprovedAt          string               `json:"approvedAt,omitempty"`
+	ApprovedBy          string               `json:"approvedBy,omitempty"`
 }
 
 // RequiredDatasource describes a datasource type required by a template.

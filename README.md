@@ -83,6 +83,7 @@ Wazne:
 - backend pluginu nie tworzy dashboardu bezposrednio w bazie Grafany,
 - backend pluginu tylko dostarcza i zapisuje template bundles,
 - sam import dashboardu korzysta z oficjalnego API Grafany.
+- plugin wystawia import dla wszystkich uzytkownikow, ktorzy maja dostep do aplikacji, ale finalny zapis dashboardu nadal respektuje uprawnienia Grafany do tworzenia dashboardow i zapisu do folderu.
 
 ## Co dzieje sie przy uploadzie
 
@@ -98,6 +99,11 @@ Upload to polaczenie frontendu i backendu pluginu:
 3. backend pluginu waliduje dane,
 4. backend zapisuje bundle do storage,
 5. nowy template pojawia sie w galerii.
+
+Upload jest ograniczony do rol `Editor` i `Admin`:
+- frontend ukrywa akcje publikacji dla `Viewer`,
+- strona `/upload` pokazuje guard w UI,
+- backend pluginu dodatkowo egzekwuje to po stronie serwera, wiec sam frontend nie jest jedyna ochrona.
 
 ## Czy to jest tylko praca pluginu
 
